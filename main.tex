@@ -24,7 +24,7 @@
 
 \begin{document}
 
-\title{Remote-Controlled Tactical Rover: A Raspberry Pi and Arduino Nano Based Autonomous Ground Platform for Human Detection and Tactical Engagement\\
+\title{Autonomous Tactical Rover: A Raspberry Pi and Arduino Nano Based Platform for Human Detection and Automated Firing\\
 \large{CSE 4326 -- Final Project Report}}
 
 \author{
@@ -47,11 +47,11 @@
 \maketitle
 
 \begin{abstract}
-Tactical ground robotics remains an underdeveloped area within Bangladesh's local research and academic ecosystem, despite rapid global advancement in autonomous defense platforms. This report presents the design, implementation, and evaluation of a Remote-Controlled Tactical Rover, a low-cost proof-of-concept built around a dual-controller architecture: a Raspberry Pi handling perception, locomotion, and the web-based control interface, and an Arduino Nano handling turret scanning and the autonomous firing sequence. The Raspberry Pi runs a Flask web server that streams live MJPEG video and exposes drive controls to an operator's browser, while concurrently running a YOLOv8 object-detection model to identify human targets in real time. The two controllers are deliberately decoupled and communicate over a simple serial (UART) link: the Raspberry Pi sends a single-character fire command only when a human is detected with sufficient confidence and the system is in autonomous mode, and the Arduino Nano independently executes a scanning sweep, an LCD/buzzer status sequence, and the physical fire mechanism. The platform supports two operating modes -- a fully autonomous mode in which detected human targets trigger engagement, and a manual override mode in which the operator drives the rover directly from the dashboard -- along with an emergency stop that halts movement regardless of mode. The prototype demonstrates that militarily relevant capabilities, including real-time vision-based threat detection, remote driving, and an isolated, predictable firing subsystem, can be achieved using low-cost, widely available embedded hardware. The report concludes with identified limitations and a roadmap for future work, including multi-frame target confirmation, sensor fusion for obstacle avoidance, and secure communication.
+Tactical ground robotics remains an underdeveloped area within Bangladesh's local research and academic ecosystem, despite rapid global advancement in autonomous defense platforms. This report presents the design, implementation, and evaluation of an Autonomous Tactical Rover, a low-cost proof-of-concept built around a dual-controller architecture: a Raspberry Pi handling perception, locomotion, and the web-based control interface, and an Arduino Nano handling turret scanning and the autonomous firing sequence. The Raspberry Pi runs a Flask web server that streams live MJPEG video and exposes drive controls to an operator's browser, while concurrently running a YOLOv8 object-detection model to identify human targets in real time. The two controllers are deliberately decoupled and communicate over a simple serial (UART) link: the Raspberry Pi sends a single-character fire command only when a human is detected with sufficient confidence and the system is in autonomous mode, and the Arduino Nano independently executes a scanning sweep, an LCD/buzzer status sequence, and the physical fire mechanism. The platform supports two operating modes -- a fully autonomous mode in which detected human targets trigger engagement, and a manual override mode in which the operator drives the rover directly from the dashboard -- along with an emergency stop that halts movement regardless of mode. The prototype demonstrates that militarily relevant capabilities, including real-time vision-based threat detection, remote driving, and an isolated, predictable firing subsystem, can be achieved using low-cost, widely available embedded hardware. The report concludes with identified limitations and a roadmap for future work, including multi-frame target confirmation, sensor fusion for obstacle avoidance, and secure communication.
 \end{abstract}
 
 \begin{IEEEkeywords}
-tactical robotics, Raspberry Pi, Arduino Nano, YOLOv8, autonomous human detection, remote-controlled rover, computer vision, Flask, serial communication, military robotics, Bangladesh
+tactical robotics, Raspberry Pi, Arduino Nano, YOLOv8, autonomous human detection, autonomous rover, computer vision, Flask, serial communication, military robotics, Bangladesh
 \end{IEEEkeywords}
 
 \section{Introduction}
@@ -247,7 +247,7 @@ Fig.~\ref{fig:overview} shows the fully integrated rover platform, combining the
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\linewidth]{fig_system_overview.png}
-\caption{Complete assembled Remote-Controlled Tactical Rover prototype, integrating the Raspberry Pi drive unit and Arduino Nano turret. \textit{[Placeholder -- insert full system photo here.]}}
+\caption{Complete assembled Autonomous Tactical Rover prototype, integrating the Raspberry Pi drive unit and Arduino Nano turret. \textit{[Placeholder -- insert full system photo here.]}}
 \label{fig:overview}
 \end{figure}
 
