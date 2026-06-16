@@ -1,0 +1,291 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{float}
+\usepackage{listings}
+
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codegray},
+  breaklines=true,
+  frame=single,
+  numbers=none,
+  columns=fullflexible
+}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Remote-Controlled Tactical Rover: A Raspberry Pi and Arduino Nano Based Autonomous Ground Platform for Human Detection and Tactical Engagement\\
+\large{CSE 4326 -- Final Project Report}}
+
+\author{
+\IEEEauthorblockN{Adnan Mohammad Salauddin, Easmin Akter Tule, Taki Tahmid, Somaya Tabassum, Shamim}
+\IEEEauthorblockA{
+Department of Computer Science and Engineering\\
+United International University (UIU), Dhaka, Bangladesh\\
+Group Three -- CSE 4326}
+}
+
+\maketitle
+
+\begin{abstract}
+Tactical ground robotics remains an underdeveloped area within Bangladesh's local research and academic ecosystem, despite rapid global advancement in autonomous defense platforms. This report presents the design, implementation, and evaluation of a Remote-Controlled Tactical Rover, a low-cost proof-of-concept built around a dual-controller architecture: a Raspberry Pi handling perception, locomotion, and the web-based control interface, and an Arduino Nano handling turret scanning and the autonomous firing sequence. The Raspberry Pi runs a Flask web server that streams live MJPEG video and exposes drive controls to an operator's browser, while concurrently running a YOLOv8 object-detection model to identify human targets in real time. The two controllers are deliberately decoupled and communicate over a simple serial (UART) link: the Raspberry Pi sends a single-character fire command only when a human is detected with sufficient confidence and the system is in autonomous mode, and the Arduino Nano independently executes a scanning sweep, an LCD/buzzer status sequence, and the physical fire mechanism. The platform supports two operating modes -- a fully autonomous mode in which detected human targets trigger engagement, and a manual override mode in which the operator drives the rover directly from the dashboard -- along with an emergency stop that halts movement regardless of mode. The prototype demonstrates that militarily relevant capabilities, including real-time vision-based threat detection, remote driving, and an isolated, predictable firing subsystem, can be achieved using low-cost, widely available embedded hardware. The report concludes with identified limitations and a roadmap for future work, including multi-frame target confirmation, sensor fusion for obstacle avoidance, and secure communication.
+\end{abstract}
+
+\begin{IEEEkeywords}
+tactical robotics, Raspberry Pi, Arduino Nano, YOLOv8, autonomous human detection, remote-controlled rover, computer vision, Flask, serial communication, military robotics, Bangladesh
+\end{IEEEkeywords}
+
+\section{Introduction}
+Autonomous and semi-autonomous ground robots are increasingly central to modern defense and security operations, allowing hazardous tasks to be performed at a stand-off distance from human personnel. Globally, military robotics research has progressed toward platforms that combine real-time computer vision, autonomous decision-making, and remote human oversight. In Bangladesh, however, tactical ground robotics is still at a nascent stage: there is limited local development of integrated autonomous platforms that combine perception, mobility, and actuation under a single, human-supervised system.
+
+This gap motivated the present project. Rather than treating tactical robotics as an area reserved for large defense budgets and specialized institutions, this project set out to demonstrate that a functional, militarily relevant prototype can be built by a small university team using affordable, commercially available components -- specifically a Raspberry Pi and an Arduino Nano, rather than costly specialized embedded defense hardware. The central research question guiding this work was: \textit{can a low-cost, dual-controller embedded platform support real-time human detection, autonomous engagement logic, and reliable remote driving, while keeping the firing mechanism safely isolated and predictable?}
+
+The remainder of this report is organized as follows. Section II details the motivation and design objectives. Section III describes the overall system architecture. Section IV covers the hardware design. Section V presents the software implementation on both controllers. Section VI explains the control interface. Section VII discusses results and observations. Section VIII addresses limitations, and Section IX concludes with future work.
+
+\section{Project Motivation}
+The project was driven by five key design objectives.
+
+\subsection{Protect Personnel}
+The primary motivation is to reduce the exposure of human troops and operators to hazardous environments. By enabling remote operation through a browser-based dashboard accessible over Wi-Fi, the rover allows reconnaissance and engagement tasks to be performed without placing personnel directly in harm's way.
+
+\subsection{Enhancing Precision}
+A secondary goal is to reduce human error and reaction time through AI-assisted detection. The Raspberry Pi continuously evaluates the live camera feed using a YOLOv8 object-detection model, providing consistent, low-latency human-presence classification to support engagement decisions in autonomous mode.
+
+\subsection{Affordable, Decoupled Hardware}
+Rather than using a single, expensive, monolithic controller, the system deliberately splits responsibilities across two low-cost boards: a Raspberry Pi for the computationally heavier vision and networking tasks, and an Arduino Nano for the simpler, timing-sensitive turret and firing tasks. This separation keeps each subsystem simple, debuggable, and inexpensive to replace.
+
+\subsection{Innovation Proof: Local Capacity Building}
+Bangladesh currently lacks a visible base of locally developed tactical robotics platforms. This project is intended as a proof of concept that meaningful autonomous-detection and engagement-logic capability can be prototyped using widely available, low-cost embedded hardware such as the Raspberry Pi and Arduino Nano, rather than requiring expensive, imported, closed-source systems. This directly addresses the motivating observation that tactical robotics development has not kept pace locally compared to global trends.
+
+\subsection{Confirmed Human Control}
+Despite the system's autonomous capabilities, an operator can switch to manual mode and take direct control of the drive system at any time through the dashboard, and an emergency stop is always available to immediately halt all motor movement regardless of the current mode.
+
+\section{System Architecture}
+The Tactical Rover uses a two-controller architecture in which the Raspberry Pi handles perception and locomotion, and the Arduino Nano handles turret aiming and firing. Fig.~\ref{fig:block} shows the high-level block diagram of the system.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_block_diagram.png}
+\caption{High-level system block diagram showing the Raspberry Pi (vision, drive control, Flask web server) and the Arduino Nano (turret scanning, fire sequence), linked by a serial UART connection. \textit{[Placeholder -- insert system block diagram here.]}}
+\label{fig:block}
+\end{figure}
+
+The two controllers are deliberately decoupled: the Raspberry Pi never drives the turret servos or the launcher motor directly. Instead, it sends a single ASCII character (\texttt{'F'} or \texttt{'f'}) over the serial connection whenever its detection logic and the current operating mode together indicate that engagement should occur. The Arduino Nano listens for this byte independently of all other turret behavior, which keeps the firing subsystem simple, predictable, and easy to reason about in isolation from the vision and networking code running on the Pi.
+
+The operational logic in autonomous mode follows a three-stage pipeline, also summarized in Fig.~\ref{fig:flowchart}:
+\begin{enumerate}
+    \item \textbf{Visual Feed Analysis:} The Raspberry Pi camera continuously captures frames via \texttt{picamera2} for both AI inference and live streaming.
+    \item \textbf{AI Threat Classification:} A YOLOv8n model run on the Raspberry Pi analyzes each captured frame; if a detected object is classified as a person (class index 0) with confidence greater than 0.6, the frame is flagged as \textit{human detected}.
+    \item \textbf{Autonomous Engagement:} If the system is in AUTO mode and a human is detected, the Pi stops the drive motors and sends the fire command over serial to the Arduino Nano, which executes the physical fire sequence.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\linewidth]{fig_flowchart.png}
+\caption{AUTO-mode operation flow: camera capture $\rightarrow$ YOLOv8 human detection $\rightarrow$ stop and send fire command over serial $\rightarrow$ Arduino executes fire sequence. \textit{[Placeholder -- insert flowchart diagram here.]}}
+\label{fig:flowchart}
+\end{figure}
+
+\section{Hardware Design}
+\subsection{The Brain: Raspberry Pi}
+The Raspberry Pi serves as the main controller of the rover. It runs the Flask web server that serves the control dashboard and the live MJPEG video stream, executes the YOLOv8n human-detection model on each captured frame, and drives the two DC motors directly through GPIO pins using the \texttt{gpiozero} library. The Pi was chosen for this role because it provides sufficient processing power to run a real-time object-detection model alongside network serving, which would not be practical on a simpler microcontroller.
+
+\subsection{The Body: 2WD Differential-Drive Chassis}
+The rover's mobility platform uses two independently controlled DC motors in a differential-drive (left/right) configuration. Forward, backward, left, and right movement are achieved by driving the left and right motors in different combinations of forward and backward at a configurable speed (10\%--100\%, adjustable from the dashboard).
+
+\subsection{The Turret: Arduino Nano, Servos, and Launcher}
+A separate Arduino Nano controls the turret assembly, consisting of four servos and an Electronic Speed Controller (ESC) driving a flywheel/launcher motor. Servos 1 and 4 perform a mirrored, continuous horizontal scanning sweep, and servo 2 performs a vertical nodding sweep, giving the turret a constantly scanning idle behavior. Servo 3 is reserved purely for the fire-trigger action, sweeping from 0$^{\circ}$ to 180$^{\circ}$ and back as part of the fire sequence. A buzzer and a 16x2 I2C LCD display provide local audible and visual feedback (e.g., \textit{``HUMAN DETECTED''}, \textit{``TARGET LOCKED''}, \textit{``FIRE COMPLETE''}) during target lock and engagement.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_pi_unit.png}
+\caption{Raspberry Pi unit showing the camera module, drive motor wiring, and main control board. \textit{[Placeholder -- insert photo of the Raspberry Pi and drive subsystem here.]}}
+\label{fig:piunit}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_turret_unit.png}
+\caption{Arduino Nano turret assembly showing the four servos, ESC/launcher motor, buzzer, and LCD display. \textit{[Placeholder -- insert close-up photo of the turret assembly here.]}}
+\label{fig:turretunit}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_lcd_status.png}
+\caption{LCD status display showing a live status message during the fire sequence (e.g., ``TARGET LOCKED'' / ``FIRE!!!''). \textit{[Placeholder -- insert close-up photo of the LCD display here.]}}
+\label{fig:lcdstatus}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_wiring.png}
+\caption{Serial (UART) wiring between the Raspberry Pi and the Arduino Nano, along with motor and GPIO connections. \textit{[Placeholder -- insert wiring photo or diagram here.]}}
+\label{fig:wiring}
+\end{figure}
+
+\subsection{Hardware Summary}
+Table~\ref{tab:hardware} summarizes the major hardware components and their roles.
+
+\begin{table}[H]
+\caption{Hardware Components and Roles}
+\label{tab:hardware}
+\centering
+\begin{tabular}{|p{2.1cm}|p{2.4cm}|p{2.6cm}|}
+\hline
+\textbf{Component} & \textbf{Role} & \textbf{Interface} \\
+\hline
+Raspberry Pi & Vision, web server, drive control & Camera (CSI), GPIO, Serial \\
+\hline
+Pi Camera (picamera2) & Video capture for AI \& streaming & CSI port \\
+\hline
+2$\times$ DC Motors & Differential drive & GPIO 17, 27, 22, 23 \\
+\hline
+Arduino Nano & Turret scanning \& firing & Serial (RX/TX) \\
+\hline
+Servo 1 / Servo 4 & Horizontal scan sweep & Pins D3 / D4 \\
+\hline
+Servo 2 & Vertical nod sweep & Pin D5 \\
+\hline
+Servo 3 & Fire-trigger actuator & Pin D6 \\
+\hline
+ESC + Launcher motor & Firing flywheel/launcher & Pin D10 \\
+\hline
+Buzzer & Audible fire alert & Pin D11 \\
+\hline
+16x2 I2C LCD & Status display & I2C (addr.\ 0x27) \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Software Implementation}
+\subsection{Raspberry Pi: Detection, Driving, and Web Server}
+The Raspberry Pi runs a single Python application built on Flask. A background thread (\texttt{ai\_loop}) continuously captures frames from the camera, runs YOLOv8n inference at a reduced resolution (256~px) for low latency, and checks for a detected person above a 0.6 confidence threshold. Depending on the current mode, the loop either autonomously stops and fires, or simply applies whatever manual command the operator last issued. A separate set of Flask routes (\texttt{/control/<key>}, \texttt{/speed/<val>}, \texttt{/video\_feed}) exposes mode switching, directional commands, speed adjustment, and the live MJPEG video stream to the browser-based dashboard. Listing~\ref{lst:ai_loop} shows the core decision logic executed inside the AI loop.
+
+\begin{lstlisting}[caption={Core AUTO/MANUAL decision logic (simplified from \texttt{ai\_loop}).}, label={lst:ai_loop}, language=Python]
+if mode == "auto" and not emergency_stop:
+    if human_detected:
+        stop()
+        fire()      # sends 'F' over serial
+    else:
+        forward()
+elif mode == "manual" and not emergency_stop:
+    apply_command()  # last manual key
+
+if emergency_stop:
+    stop()
+\end{lstlisting}
+
+\subsection{Arduino Nano: Turret Scanning and Fire Sequence}
+The Arduino Nano firmware continuously sweeps servos 1, 2, and 4 to give the turret an idle scanning motion, while polling the serial port for an incoming fire command. On receiving \texttt{'F'} or \texttt{'f'}, it executes \texttt{fireSequence()}: the buzzer and LCD indicate detection and target lock, the ESC is driven to its maximum pulse width to spin up the launcher, servo 3 performs the physical trigger motion, and the system then resets the ESC and LCD before resuming the idle scan. This sequence is summarized in Listing~\ref{lst:fire_seq}.
+
+\begin{lstlisting}[caption={Simplified fire sequence executed on the Arduino Nano.}, label={lst:fire_seq}, language=C++]
+void fireSequence() {
+  digitalWrite(BUZZER_PIN, HIGH);
+  lcd.print("!! HUMAN !! DETECTED");
+
+  esc.writeMicroseconds(ESC_MAX_US);  // spin up launcher
+  servo3.write(0);                     // trigger
+  delay(800);
+  servo3.write(180);                   // reset trigger
+  esc.writeMicroseconds(ESC_MIN_US);   // stop launcher
+
+  digitalWrite(BUZZER_PIN, LOW);
+  lcd.print("FIRE COMPLETE / Scanning...");
+}
+\end{lstlisting}
+
+\subsection{Pi-to-Arduino Communication}
+Communication between the two boards is intentionally minimal: a single character is sent from the Pi to the Arduino over a direct serial (UART) connection whenever a fire decision is made. No acknowledgment or telemetry is currently returned from the Arduino to the Pi; the link is one-directional and stateless by design, which keeps the protocol simple but is noted as a limitation in Section VIII.
+
+\section{Control Interface}
+The operator interacts with the rover through a lightweight browser-based dashboard (Fig.~\ref{fig:dashboard}), served directly by the Flask application and accessible from any phone or computer on the same network. The dashboard provides:
+\begin{itemize}
+    \item A live MJPEG video stream from the Raspberry Pi camera.
+    \item AUTO and MANUAL mode toggle buttons.
+    \item An emergency STOP button that immediately halts all motor movement.
+    \item Speed presets (10\%, 50\%, 100\%) and fine-grained keyboard speed control (number keys 1--0, mapped to 10\%--100\%).
+    \item Keyboard arrow-key and on-screen directional controls for manual driving.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\linewidth]{fig_dashboard.png}
+\caption{Browser-based control dashboard showing the live camera feed, AUTO/MANUAL/STOP buttons, and speed controls. \textit{[Placeholder -- insert screenshot of the web dashboard here.]}}
+\label{fig:dashboard}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_detection_demo.png}
+\caption{Sample YOLOv8 detection output on the live camera feed, showing a person correctly classified above the confidence threshold. \textit{[Placeholder -- insert screenshot of YOLO detection output here.]}}
+\label{fig:detection}
+\end{figure}
+
+\section{System Overview and Demonstration}
+Fig.~\ref{fig:overview} shows the fully integrated rover platform, combining the Raspberry Pi drive/vision unit and the Arduino Nano turret assembly described in the preceding sections.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{fig_system_overview.png}
+\caption{Complete assembled Remote-Controlled Tactical Rover prototype, integrating the Raspberry Pi drive unit and Arduino Nano turret. \textit{[Placeholder -- insert full system photo here.]}}
+\label{fig:overview}
+\end{figure}
+
+\section{Results and Discussion}
+The prototype successfully demonstrated the following key accomplishments:
+
+\begin{itemize}
+    \item \textbf{Functional Dual-Controller Prototype:} A working differential-drive rover with an independently operating scanning turret was built and demonstrated, with the Raspberry Pi and Arduino Nano communicating reliably over serial.
+    \item \textbf{Real-Time AI Detection:} The YOLOv8n model running on the Raspberry Pi achieved low-latency human detection at a reduced inference resolution, suitable for real-time operation.
+    \item \textbf{Working AUTO/MANUAL Modes:} Seamless switching between autonomous detection-triggered engagement and phone/browser-based manual driving was verified during testing.
+    \item \textbf{Isolated, Predictable Firing Subsystem:} By gating the entire fire sequence behind a single serial byte, the turret's behavior remained simple and predictable, independent of any vision or networking issues on the Pi.
+    \item \textbf{Emergency Stop:} The emergency stop reliably halted drive motors regardless of the current mode during testing.
+\end{itemize}
+
+These results support the conclusion that a low-cost, dual-controller embedded platform -- a Raspberry Pi paired with an Arduino Nano -- is sufficient to demonstrate core tactical-robotics capabilities, including real-time perception, autonomous decision logic, and physically isolated actuation, that have so far seen limited local development in Bangladesh.
+
+\section{Limitations}
+While the prototype met its core design objectives, several limitations were identified during testing. The YOLOv8n model's detection accuracy at a reduced 256~px inference resolution is sensitive to lighting conditions, target distance, and background clutter, and engagement is currently triggered from a single-frame confidence threshold rather than multi-frame confirmation, which can be susceptible to momentary false positives. The Flask web dashboard and the Pi-Arduino serial link are both unauthenticated and unencrypted on the local network, which would be unsuitable for real-world deployment without additional security hardening. The serial protocol between the two boards is also one-directional, with no acknowledgment or telemetry returned from the Arduino to the Pi. Finally, the system currently relies solely on the onboard camera for perception, with no additional sensing modalities (e.g., ultrasonic or depth) for obstacle avoidance during autonomous driving.
+
+\section{Conclusion and Future Work}
+This project demonstrates that a low-cost, dual-controller embedded platform built from a Raspberry Pi and an Arduino Nano can support real-time AI-based human detection, reliable remote driving, and a physically isolated, predictable autonomous engagement subsystem, providing a credible proof-of-concept for cost-efficient tactical robotics innovation. Given the comparatively limited development of such integrated platforms within Bangladesh's local research environment, this prototype is intended as a demonstrative step toward closing that gap.
+
+Future work is planned in four directions:
+\begin{enumerate}
+    \item \textbf{Multi-Frame Target Confirmation:} Requiring sustained detection across multiple consecutive frames before triggering engagement, to reduce false-positive fire events.
+    \item \textbf{Sensor Fusion for Navigation:} Incorporating ultrasonic or depth sensors to support obstacle avoidance during autonomous driving.
+    \item \textbf{Secure Communication:} Adding authentication to the web dashboard and considering encryption or message integrity checks on the Pi-Arduino serial link.
+    \item \textbf{Bidirectional Telemetry:} Extending the serial protocol so the Arduino can report turret and fire-sequence status back to the Pi (and onward to the dashboard) in real time.
+\end{enumerate}
+
+\section*{Project Resources}
+\begin{itemize}
+    \item \textbf{GitHub Repository:} \url{https://github.com/<team-username>/<repository-name>} \textit{[Placeholder -- insert your team's GitHub repository link here. The repository must contain all source code (Raspberry Pi Python application and Arduino Nano firmware) and a README.md describing the full project.]}
+    \item \textbf{Video Demonstration:} \url{https://drive.google.com/<your-video-link>} \textit{[Placeholder -- insert your Google Drive or YouTube demo video link here, following the provided demo video guideline.]}
+\end{itemize}
+
+\section*{Acknowledgment}
+The authors thank the course instructor for guidance throughout the design and development of this project as part of CSE 4326.
+
+\begin{thebibliography}{00}
+\bibitem{b1} Raspberry Pi Foundation, ``Raspberry Pi Documentation,'' 2024. [Online]. Available: https://www.raspberrypi.com/documentation/
+\bibitem{b2} Arduino, ``Arduino Nano Documentation,'' 2024. [Online]. Available: https://docs.arduino.cc/hardware/nano
+\bibitem{b3} G. Jocher, A. Chaurasia, and J. Qiu, ``YOLO by Ultralytics,'' Ultralytics, 2023. [Online]. Available: https://github.com/ultralytics/ultralytics
+\bibitem{b4} J. Redmon, S. Divvala, R. Girshick, and A. Farhadi, ``You only look once: Unified, real-time object detection,'' in \textit{Proc. IEEE Conf. Computer Vision and Pattern Recognition (CVPR)}, 2016, pp. 779--788.
+\bibitem{b5} R. Siegwart, I. R. Nourbakhsh, and D. Scaramuzza, \textit{Introduction to Autonomous Mobile Robots}, 2nd ed. Cambridge, MA, USA: MIT Press, 2011.
+\end{thebibliography}
+
+\end{document}
